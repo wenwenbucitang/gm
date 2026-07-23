@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>Cyberpunk Megapolis — Web-Swing Edition</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  @font-face {
+    font-family: 'Geist Mono';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url(./fonts/geist-mono.woff2) format('woff2');
+  }
+  :root {
+    --cyan: #5ff;
+    --pink: #ff4fd8;
+    --ink: #eef1f8;
+    --dim: #8b93a8;
+    --mono: 'Geist Mono', ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0a0c10; overflow: hidden;
+    font-family: var(--mono); color: var(--ink); }
+  #app { position: fixed; inset: 0; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+  #loader { position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; background: #000; z-index: 30;
+    transition: opacity .9s; font-family: var(--mono); }
+  #loader .p-kicker { font-size: clamp(11px, 1.1vw, 14px); font-weight: 300;
+    letter-spacing: .58em; text-indent: .58em; color: #8a8a8a; text-transform: uppercase;
+    opacity: 0; animation: pfade 1.6s .15s ease forwards; }
+  #loader .p-name { margin-top: 26px; font-size: clamp(40px, 6.2vw, 84px); font-weight: 200;
+    letter-spacing: .34em; text-indent: .34em; color: #fff; white-space: nowrap;
+    opacity: 0; animation: pfade 1.8s .5s ease forwards; }
+  #loader .p-rule { margin-top: 42px; width: 60px; height: 1px; background: #333;
+    opacity: 0; animation: pfade 1.6s 1.0s ease forwards; }
+  #loadMsg { position: absolute; bottom: 44px; font-size: 11px; font-weight: 300;
+    letter-spacing: .3em; color: #5a5a5a; text-transform: uppercase;
+    opacity: 0; animation: pfade 1.4s 1.2s ease forwards; }
+  #bar { position: absolute; bottom: 76px; width: min(320px, 60vw); height: 1px;
+    background: #222; opacity: 0; animation: pfade 1.4s 1.2s ease forwards; }
+  #barFill { height: 100%; width: 0%; background: #888; transition: width .25s ease;
+    box-shadow: 0 0 6px #fff4; }
+  #loadPct { position: absolute; bottom: 88px; font-size: 10px; font-weight: 300;
+    letter-spacing: .34em; color: #444; text-transform: uppercase;
+    opacity: 0; animation: pfade 1.4s 1.2s ease forwards; }
+  @keyframes pfade { from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; } }
+
+  /* ---------- menu (left editorial column, web-slinger style) ---------- */
+  #menu { position: fixed; inset: 0; z-index: 20;
+    background: linear-gradient(90deg,
+      rgba(3,5,12,0.92) 0%, rgba(3,5,12,0.74) 24%,
+      rgba(3,5,12,0.34) 46%, rgba(3,5,12,0) 70%);
+    opacity: 0; pointer-events: none; transition: opacity .45s; }
+  #menu.show { opacity: 1; pointer-events: auto; }
+  #menu.gone { opacity: 0; pointer-events: none; }
+  #menuCol { position: absolute; left: clamp(40px, 7vw, 120px); top: 0; bottom: 0;
+    display: flex; flex-direction: column; justify-content: center;
+    min-width: 320px; max-width: 480px; }
+  #brand .kicker { font-size: 11px; font-weight: 300; letter-spacing: .52em;
+    color: #93a8e8; text-transform: uppercase; margin-bottom: 14px; }
+  #brand h1 { font-weight: 800; font-size: clamp(36px, 4.4vw, 60px);
+    letter-spacing: -0.02em; line-height: 1.02; color: var(--ink);
+    text-shadow: 0 2px 22px rgba(0,0,0,.85); }
+  #brand h1 .accent { color: var(--pink); text-shadow: 0 0 24px #f0f6; }
+  #brandRule { margin-top: 24px; width: 64px; height: 1px;
+    background: linear-gradient(90deg, var(--cyan), transparent); }
+  #cards { margin-top: 40px; display: flex; flex-direction: column; gap: 4px; }
+  .m-card { position: relative; display: flex; flex-direction: column; gap: 3px;
+    padding: 13px 0 13px 34px; text-align: left;
+    color: #a9b2c8; text-shadow: 0 1px 10px rgba(0,0,0,.9);
+    transition: color .16s, transform .16s; }
+  .m-card::before { content: ''; position: absolute; left: 0; top: 50%; width: 16px; height: 1px;
+    background: var(--cyan); opacity: 0; transform: scaleX(.3); transform-origin: left;
+    transition: opacity .16s, transform .16s; }
+  .m-card:hover, .m-card.sel { color: var(--ink); transform: translateX(8px); }
+  .m-card:hover::before, .m-card.sel::before { opacity: 1; transform: scaleX(1); }
+  .m-card.sel .m-name { color: var(--cyan); text-shadow: 0 0 12px #0ff6; }
+  .m-card.broken { opacity: .38; }
+  .m-card.broken .m-desc { color: #ff6d8a; }
+  .m-tag { font-size: 10px; font-weight: 300; letter-spacing: .3em; color: var(--pink);
+    text-transform: uppercase; }
+  .m-name { font-size: 16.5px; letter-spacing: .18em; text-transform: uppercase; }
+  .m-desc { font-size: 10.5px; font-weight: 300; color: var(--dim); letter-spacing: .04em; }
+  #enterBtn { margin-top: 36px; align-self: flex-start; padding: 13px 44px;
+    font-size: 14px; letter-spacing: .35em; text-transform: uppercase;
+    color: #466; border: 1px solid #1f3346; border-radius: 6px; cursor: not-allowed;
+    transition: all .25s; }
+  #enterBtn.ready { color: #042; background: linear-gradient(90deg, #0ff3, #0ff1);
+    border-color: var(--cyan); cursor: pointer; text-shadow: 0 0 8px #0ff;
+    box-shadow: 0 0 26px #0ff4; }
+  #enterBtn.ready:hover { background: linear-gradient(90deg, #0ff6, #0ff3); }
+  #menuFoot { position: absolute; bottom: 30px; left: 0;
+    font-size: 10.5px; font-weight: 300; letter-spacing: .22em;
+    color: #707a92; text-transform: uppercase; text-shadow: 0 1px 8px rgba(0,0,0,.9); }
+
+  /* ---------- pause ---------- */
+  #pause { position: fixed; inset: 0; z-index: 19; display: flex;
+    align-items: center; justify-content: center;
+    background: rgba(3,5,12,0.55); backdrop-filter: blur(2px);
+    opacity: 0; pointer-events: none; transition: opacity .3s; cursor: pointer; }
+  #pause.show { opacity: 1; pointer-events: auto; }
+  #pause .p-box { text-align: center; }
+  #pause .p-title { font-size: 15px; letter-spacing: .4em; color: var(--cyan);
+    text-transform: uppercase; margin-bottom: 10px; }
+  #pause .p-sub { font-size: 11px; letter-spacing: .2em; color: var(--dim); }
+
+  /* ---------- in-game HUD ---------- */
+  #stats { position: fixed; left: 22px; bottom: 20px; z-index: 10; display: flex; gap: 10px;
+    opacity: 0; transition: opacity .6s; pointer-events: none; }
+  #stats.on { opacity: 1; }
+  .panel { background: rgba(8,10,22,0.38); border: 1px solid rgba(140,160,255,0.12);
+    border-radius: 8px; padding: 8px 14px; backdrop-filter: blur(3px); }
+  .panel .v { font-size: 20px; color: var(--ink); }
+  .panel .v small { font-size: 10px; color: var(--dim); margin-left: 4px; }
+  .panel .k { font-size: 9px; letter-spacing: .24em; color: var(--dim);
+    text-transform: uppercase; margin-top: 2px; }
+  #fps { position: fixed; top: 10px; left: 12px; z-index: 10; font-size: 11px;
+    color: #9bd; text-shadow: 0 1px 2px #000; pointer-events: none; }
+  #msg { position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 11;
+    font-size: 15px; letter-spacing: .2em; color: var(--cyan); text-transform: uppercase;
+    text-shadow: 0 0 14px #0ff6, 0 2px 6px #000; opacity: 0; transition: opacity .4s;
+    pointer-events: none; }
+  #fade { position: fixed; inset: 0; z-index: 15; background: #dce8ff;
+    opacity: 0; pointer-events: none; transition: opacity .38s; }
+
+  /* ---------- controls help overlay ---------- */
+  #help { position: fixed; inset: 0; z-index: 18; display: flex;
+    align-items: center; justify-content: center;
+    background: rgba(3,5,12,0.62); backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none; transition: opacity .35s; }
+  #help.show { opacity: 1; }
+  #help .h-box { border: 1px solid rgba(140,160,255,0.14); border-radius: 10px;
+    background: rgba(6,8,18,0.72); padding: 26px 34px; max-width: min(560px, 86vw); }
+  #help .h-title { font-size: 13px; letter-spacing: .42em; color: var(--cyan);
+    text-transform: uppercase; margin-bottom: 16px; }
+  #help table { border-collapse: collapse; width: 100%; }
+  #help td { padding: 5px 0; font-size: 12px; color: var(--ink); }
+  #help td.k { width: 132px; color: var(--cyan); letter-spacing: .12em;
+    font-weight: 600; white-space: nowrap; padding-right: 18px; }
+  #help .h-foot { margin-top: 14px; font-size: 10px; letter-spacing: .22em;
+    color: var(--dim); text-transform: uppercase; }
+
+  /* ---------- error layer ---------- */
+  #err { position: fixed; inset: 0; z-index: 40; display: none;
+    align-items: center; justify-content: center; background: rgba(2,3,8,0.9);
+    font-family: var(--mono); }
+  #err.show { display: flex; }
+  #err .e-box { text-align: center; max-width: min(520px, 84vw); }
+  #err .e-title { font-size: 15px; letter-spacing: .4em; color: #ff6d8a;
+    text-transform: uppercase; margin-bottom: 12px; }
+  #err .e-msg { font-size: 12px; line-height: 1.9; color: var(--dim);
+    white-space: pre-wrap; word-break: break-all; }
+  #err .e-btn { margin-top: 22px; padding: 10px 34px; font-size: 12px;
+    letter-spacing: .3em; color: var(--cyan);
+    border: 1px solid rgba(85,255,255,0.45); border-radius: 4px; }
+  #err .e-btn:hover { background: rgba(85,255,255,0.08); }
+
+  /* ---------- touch notice ---------- */
+  #touchNote { position: fixed; left: 50%; bottom: 86px; transform: translateX(-50%);
+    z-index: 22; display: none; padding: 10px 22px; font-size: 12px;
+    letter-spacing: .18em; color: var(--ink);
+    background: rgba(8,10,22,0.72); border: 1px solid rgba(140,160,255,0.18);
+    border-radius: 8px; backdrop-filter: blur(3px); }
+  #touchNote.show { display: block; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/addons/"
+}}
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="loader">
+  <div class="p-kicker">Presented by</div>
+  <div class="p-name">KIMI GAME</div>
+  <div class="p-rule"></div>
+  <div id="loadPct">0%</div>
+  <div id="bar"><div id="barFill"></div></div>
+  <p id="loadMsg">loading data…</p>
+</div>
+<div id="menu">
+  <div id="menuCol">
+    <div id="brand">
+      <div class="kicker">Web-Swing Edition</div>
+      <h1>CYBERPUNK<br><span class="accent">MEGAPOLIS</span></h1>
+      <div id="brandRule"></div>
+    </div>
+    <div id="cards">
+      <button class="m-card" data-g="man">
+        <span class="m-tag">Runner 01</span>
+        <span class="m-name">Survival Man</span>
+        <span class="m-desc">迷彩夹克 · 战术背心</span>
+      </button>
+      <button class="m-card" data-g="girl">
+        <span class="m-tag">Runner 02</span>
+        <span class="m-name">Survival Girl</span>
+        <span class="m-desc">鸭舌帽 · 双肩背包</span>
+      </button>
+    </div>
+    <button id="enterBtn" disabled>Enter Game</button>
+    <div id="menuFoot">← → 选择 · Enter 开始</div>
+  </div>
+</div>
+<div id="pause">
+  <div class="p-box">
+    <div class="p-title">已暂停</div>
+    <div class="p-sub">点击或按 Enter 继续</div>
+  </div>
+</div>
+<div id="stats">
+  <div class="panel"><div class="v"><span id="stSpeed">0</span><small>km/h</small></div><div class="k">速度</div></div>
+  <div class="panel"><div class="v"><span id="stHeight">0</span><small>m</small></div><div class="k">高度</div></div>
+  <div class="panel"><div class="v" id="stState">—</div><div class="k">状态</div></div>
+</div>
+<div id="fps"></div>
+<div id="msg"></div>
+<div id="fade"></div>
+<div id="help" aria-label="操作说明">
+  <div class="h-box">
+    <div class="h-title">操作 · Controls</div>
+    <table>
+      <tr><td class="k">W A S D</td><td>相机相对移动</td></tr>
+      <tr><td class="k">鼠标</td><td>转动相机</td></tr>
+      <tr><td class="k">Shift</td><td>地面冲刺 · 摆荡收绳</td></tr>
+      <tr><td class="k">Space</td><td>跳跃 · 空中长按吐丝 · 松开脱离</td></tr>
+      <tr><td class="k">W（摆荡）</td><td>低点泵速</td></tr>
+      <tr><td class="k">A / D（摆荡）</td><td>左右转向</td></tr>
+      <tr><td class="k">S（空中）</td><td>俯冲</td></tr>
+      <tr><td class="k">E / 鼠标右键</td><td>飞掠至瞄准的屋顶边缘</td></tr>
+      <tr><td class="k">R</td><td>从高空重新跃入</td></tr>
+      <tr><td class="k">T</td><td>切换 夜 / 昼 / 黄昏</td></tr>
+      <tr><td class="k">H</td><td>显示 / 隐藏本操作表</td></tr>
+      <tr><td class="k">Esc</td><td>暂停 · 点击或 Enter 继续</td></tr>
+    </table>
+    <div class="h-foot">H 随时查看 · 首次进入自动显示</div>
+  </div>
+</div>
+<div id="err" role="alert">
+  <div class="e-box">
+    <div class="e-title">发生错误</div>
+    <div class="e-msg" id="errMsg"></div>
+    <button class="e-btn" id="errRetry">重试</button>
+  </div>
+</div>
+<div id="touchNote">本作需要键盘与鼠标操作 · 请使用桌面浏览器</div>
+<script type="module">
+  // Boot via dynamic import: if main.js or ANY of its static dependencies
+  // fails (404, CDN cache mix-up, truncated deploy), the rejection lands here
+  // where we can still show the project's own error layer — a static
+  // <script type="module" src> would die silently on the loader at 0%.
+  import('./main.js?v=6').catch(error => {
+    console.error('[boot] module graph failed:', error);
+    const raw = (error && (error.message || String(error))) || 'unknown error';
+    const lm = document.getElementById('loadMsg');
+    if (lm) lm.textContent = '启动失败，请检查部署文件';
+    const box = document.getElementById('err');
+    box.querySelector('.e-title').textContent = '启动失败';
+    document.getElementById('errMsg').textContent =
+      '请检查部署文件\n' + raw;
+    box.classList.add('show');
+    document.getElementById('errRetry').onclick = () => location.reload();
+  });
+</script>
+</body>
+</html>
