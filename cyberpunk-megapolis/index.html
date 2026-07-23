@@ -219,7 +219,7 @@
 <div id="app"></div>
 <div id="loader">
   <div class="p-kicker">Presented by</div>
-  <div class="p-name">KIMI GAME</div>
+  <div class="p-name">WENZHOU GAME</div>
   <div class="p-rule"></div>
   <div id="loadPct">0%</div>
   <div id="bar"><div id="barFill"></div></div>
@@ -260,7 +260,7 @@
   <div class="panel"><div class="v" id="stState">—</div><div class="k">状态</div></div>
 </div>
 <div id="combatHud">
-  <div class="c-weapon">E-EDGE // ONLINE</div>
+  <div class="c-weapon">E-EDGE MK-II // ONLINE</div>
   <div class="c-input">F / 鼠标左键 · 能量刃攻击 · 40 DMG</div>
   <div class="skill-grid" aria-label="能量刀技能">
     <div class="skill" data-skill="dash">
@@ -324,7 +324,7 @@
   // fails (404, CDN cache mix-up, truncated deploy), the rejection lands here
   // where we can still show the project's own error layer — a static
   // <script type="module" src> would die silently on the loader at 0%.
-  import('./main.js?v=9').catch(error => {
+  import('./main.js?v=11').catch(error => {
     console.error('[boot] module graph failed:', error);
     const raw = (error && (error.message || String(error))) || 'unknown error';
     const lm = document.getElementById('loadMsg');

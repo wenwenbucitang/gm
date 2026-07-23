@@ -11,6 +11,8 @@ const _closest = new THREE.Vector3();
 const _away = new THREE.Vector3();
 const _forward = new THREE.Vector3();
 const _right = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+const _zAxis = new THREE.Vector3(0, 0, 1);
 
 function pointSegmentDistanceSq(point, start, end) {
   _segment.subVectors(end, start);
@@ -19,6 +21,34 @@ function pointSegmentDistanceSq(point, start, end) {
   const t = THREE.MathUtils.clamp(_toPoint.subVectors(point, start).dot(_segment) / lengthSq, 0, 1);
   _closest.copy(start).addScaledVector(_segment, t);
   return _closest.distanceToSquared(point);
+}
+
+function createParticleTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const context = canvas.getContext('2d');
+  const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 31);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.22, 'rgba(255,255,255,.95)');
+  gradient.addColorStop(0.55, 'rgba(255,255,255,.32)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 64, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function disposeVisual(object) {
+  const geometries = new Set();
+  const materials = new Set();
+  object.traverse(child => {
+    if (child.geometry) geometries.add(child.geometry);
+    if (Array.isArray(child.material)) child.material.forEach(material => materials.add(material));
+    else if (child.material) materials.add(child.material);
+  });
+  geometries.forEach(geometry => geometry.dispose());
+  materials.forEach(material => material.dispose());
 }
 
 export class CombatSystem {
@@ -33,6 +63,7 @@ export class CombatSystem {
     this.meshEffects = [];
     this.waves = [];
     this.hitMarkerTimer = 0;
+    this.particleTexture = createParticleTexture();
 
     this.bodyGeometry = new THREE.OctahedronGeometry(0.62, 1);
     this.shellGeometry = new THREE.IcosahedronGeometry(0.78, 1);
@@ -239,7 +270,10 @@ export class CombatSystem {
   }
 
   radialStrike(attack) {
-    this.spawnShockwave(attack.center, attack.radius, attack.color || 0x58f5ff);
+    if (attack.label === '回旋斩')
+      this.spawnSpinSlash(attack.center, attack.radius, attack.color || 0x58f5ff);
+    else
+      this.spawnShockwave(attack.center, attack.radius, attack.color || 0x58f5ff);
     if (!this.active || !this.spawned) {
       this.ui.onMessage?.('落地后将自动部署战斗训练目标', 1.5);
       return 0;
@@ -268,6 +302,7 @@ export class CombatSystem {
     this.spawnSparks(target.group.position, target.hp > 0 ? 0x54f4ff : 0xff4fa9,
       target.hp > 0 ? 20 : 42);
     this.showHitMarker();
+    this.ui.audio?.playHit(label);
 
     if (target.hp <= 0) {
       target.alive = false;
@@ -284,23 +319,55 @@ export class CombatSystem {
 
   launchWave(origin, direction, damage) {
     const group = new THREE.Group();
-    const material = new THREE.MeshBasicMaterial({
+    const outerMaterial = new THREE.MeshBasicMaterial({
       color: 0x59f7ff,
       transparent: true,
-      opacity: 0.86,
+      opacity: 0.58,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.08, 6, 28), material);
-    const core = new THREE.Mesh(new THREE.CircleGeometry(0.48, 24), material.clone());
-    core.material.opacity = 0.18;
-    group.add(ring, core);
+    outerMaterial.userData.baseOpacity = 0.58;
+    const coreMaterial = new THREE.MeshBasicMaterial({
+      color: 0xe3ffff,
+      transparent: true,
+      opacity: 0.92,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    coreMaterial.userData.baseOpacity = 0.92;
+    const hazeMaterial = new THREE.MeshBasicMaterial({
+      color: 0x139de8,
+      transparent: true,
+      opacity: 0.16,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    hazeMaterial.userData.baseOpacity = 0.16;
+
+    const arcStart = -Math.PI * 0.72;
+    const arcLength = Math.PI * 1.44;
+    const haze = new THREE.Mesh(
+      new THREE.RingGeometry(0.24, 0.92, 44, 1, arcStart, arcLength),
+      hazeMaterial);
+    const outer = new THREE.Mesh(
+      new THREE.RingGeometry(0.50, 0.79, 44, 1, arcStart, arcLength),
+      outerMaterial);
+    const core = new THREE.Mesh(
+      new THREE.RingGeometry(0.62, 0.70, 44, 1, arcStart, arcLength),
+      coreMaterial);
+    haze.position.z = -0.018;
+    core.position.z = 0.018;
+    group.add(haze, outer, core);
     group.position.copy(origin);
     _forward.copy(direction).normalize();
-    group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), _forward);
-    group.scale.set(0.42, 1.3, 1);
+    group.quaternion.setFromUnitVectors(_zAxis, _forward);
+    group.scale.set(0.58, 1.38, 1);
     this.scene.add(group);
     this.waves.push({
       group,
@@ -320,10 +387,13 @@ export class CombatSystem {
       wave.life -= dt;
       wave.previous.copy(wave.group.position);
       wave.group.position.addScaledVector(wave.direction, wave.speed * dt);
-      wave.group.rotation.z += dt * 5;
+      wave.group.rotation.z += dt * 2.4;
       const fade = Math.max(0, wave.life / wave.maxLife);
-      wave.group.children[0].material.opacity = 0.86 * fade;
-      wave.group.children[1].material.opacity = 0.18 * fade;
+      const pulse = 0.94 + Math.sin((wave.maxLife - wave.life) * 34) * 0.06;
+      for (const child of wave.group.children) {
+        if (!child.material) continue;
+        child.material.opacity = child.material.userData.baseOpacity * fade * pulse;
+      }
 
       if (this.active && this.spawned) {
         for (const target of this.targets) {
@@ -338,35 +408,63 @@ export class CombatSystem {
 
       if (wave.life <= 0) {
         this.scene.remove(wave.group);
-        wave.group.traverse(object => {
-          if (!object.isMesh) return;
-          object.geometry.dispose();
-          object.material.dispose();
-        });
+        disposeVisual(wave.group);
         this.waves.splice(i, 1);
       }
     }
   }
 
   spawnShockwave(position, radius, color) {
-    const mesh = new THREE.Mesh(
-      new THREE.RingGeometry(0.55, 0.82, 48),
-      new THREE.MeshBasicMaterial({
+    const group = new THREE.Group();
+    group.position.copy(position);
+    group.position.y += 0.055;
+    const materials = [];
+    const addRing = (inner, outer, opacity, y = 0) => {
+      const material = new THREE.MeshBasicMaterial({
         color,
         transparent: true,
-        opacity: 0.82,
+        opacity,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         side: THREE.DoubleSide,
         toneMapped: false,
-      }));
-    mesh.position.copy(position);
-    mesh.position.y += 0.05;
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.scale.setScalar(0.25);
-    this.scene.add(mesh);
+      });
+      const mesh = new THREE.Mesh(new THREE.RingGeometry(inner, outer, 56), material);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = y;
+      group.add(mesh);
+      materials.push({ material, opacity });
+    };
+    addRing(0.62, 0.72, 0.84, 0.018);
+    addRing(0.35, 0.40, 0.48, 0.028);
+    addRing(0.76, 0.79, 0.34, 0);
+
+    const spokePositions = [];
+    for (let i = 0; i < 14; i++) {
+      const angle = i / 14 * Math.PI * 2;
+      const jitter = 0.72 + Math.random() * 0.16;
+      spokePositions.push(
+        Math.cos(angle) * 0.30, 0.035, Math.sin(angle) * 0.30,
+        Math.cos(angle) * jitter, 0.035, Math.sin(angle) * jitter);
+    }
+    const spokeGeometry = new THREE.BufferGeometry();
+    spokeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(spokePositions, 3));
+    const spokeMaterial = new THREE.LineBasicMaterial({
+      color: 0xd7d2ff,
+      transparent: true,
+      opacity: 0.56,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    group.add(new THREE.LineSegments(spokeGeometry, spokeMaterial));
+    materials.push({ material: spokeMaterial, opacity: 0.56 });
+
+    group.scale.setScalar(0.25);
+    this.scene.add(group);
     this.meshEffects.push({
-      mesh,
+      object: group,
+      materials,
       life: 0.52,
       maxLife: 0.52,
       maxScale: Math.max(1, radius / 0.82),
@@ -375,28 +473,98 @@ export class CombatSystem {
     this.spawnSparks(position, color, Math.round(18 + radius * 5));
   }
 
-  spawnDashTrace(start, end) {
-    _segment.subVectors(end, start);
-    const length = _segment.length();
-    if (length < 0.05) return;
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08, 0.38, length, 8, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: 0x67f6ff,
+  spawnSpinSlash(position, radius, color) {
+    const group = new THREE.Group();
+    group.position.copy(position);
+    group.position.y += 0.08;
+    const materials = [];
+    const arcStart = -Math.PI * 0.72;
+    const arcLength = Math.PI * 1.44;
+    for (const [inner, outer, opacity, tint, y, angle] of [
+      [0.54, 0.86, 0.10, color, 0.00, 0.00],
+      [0.685, 0.715, 0.72, 0xe7ffff, 0.022, 0.02],
+      [0.62, 0.655, 0.28, color, 0.04, -0.10],
+    ]) {
+      const material = new THREE.MeshBasicMaterial({
+        color: tint,
         transparent: true,
-        opacity: 0.34,
+        opacity,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         side: THREE.DoubleSide,
         toneMapped: false,
-      }));
-    mesh.position.copy(start).addScaledVector(_segment, 0.5);
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _segment.normalize());
-    this.scene.add(mesh);
+      });
+      const geometry = new THREE.RingGeometry(
+        inner, outer, 64, 1, arcStart, arcLength);
+      const arc = new THREE.Mesh(geometry, material);
+      arc.rotation.x = -Math.PI / 2;
+      arc.rotation.z = angle;
+      arc.position.y = y;
+      group.add(arc);
+      materials.push({ material, opacity });
+    }
+    group.scale.setScalar(0.48);
+    this.scene.add(group);
     this.meshEffects.push({
-      mesh,
-      life: 0.24,
-      maxLife: 0.24,
+      object: group,
+      materials,
+      life: 0.42,
+      maxLife: 0.42,
+      maxScale: Math.max(1, radius / 0.76),
+      kind: 'spin',
+    });
+  }
+
+  spawnDashTrace(start, end) {
+    _segment.subVectors(end, start);
+    const length = _segment.length();
+    if (length < 0.05) return;
+    const direction = _segment.clone().normalize();
+    const traceEnd = end.clone();
+    const traceStart = traceEnd.clone().addScaledVector(direction, -Math.min(length, 2.0));
+    const side = new THREE.Vector3().crossVectors(direction, _up);
+    if (side.lengthSq() < 1e-4) side.set(1, 0, 0);
+    side.normalize();
+    const group = new THREE.Group();
+    const materials = [];
+
+    const streakPositions = [];
+    for (const [sideOffset, height, shorten] of [
+      [-0.14, 0.02, 0.26],
+      [-0.05, 0.10, 0.06],
+      [0.00, 0.00, 0.00],
+      [0.07, -0.04, 0.14],
+      [0.16, 0.06, 0.34],
+    ]) {
+      const from = traceStart.clone()
+        .addScaledVector(direction, shorten)
+        .addScaledVector(side, sideOffset)
+        .addScaledVector(_up, height);
+      const to = traceEnd.clone()
+        .addScaledVector(side, sideOffset * 0.18)
+        .addScaledVector(_up, height * 0.2);
+      streakPositions.push(from.x, from.y, from.z, to.x, to.y, to.z);
+    }
+    const filamentGeometry = new THREE.BufferGeometry();
+    filamentGeometry.setAttribute(
+      'position', new THREE.Float32BufferAttribute(streakPositions, 3));
+    const filamentMaterial = new THREE.LineBasicMaterial({
+      color: 0xeaffff,
+      transparent: true,
+      opacity: 0.72,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    group.add(new THREE.LineSegments(filamentGeometry, filamentMaterial));
+    materials.push({ material: filamentMaterial, opacity: 0.72 });
+
+    this.scene.add(group);
+    this.meshEffects.push({
+      object: group,
+      materials,
+      life: 0.18,
+      maxLife: 0.18,
       maxScale: 1,
       kind: 'fade',
     });
@@ -458,9 +626,11 @@ export class CombatSystem {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({
       color,
-      size: count > 25 ? 0.18 : 0.12,
+      size: count > 25 ? 0.24 : 0.17,
+      map: this.particleTexture,
       transparent: true,
       opacity: 1,
+      alphaTest: 0.015,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       toneMapped: false,
@@ -500,16 +670,16 @@ export class CombatSystem {
       const effect = this.meshEffects[i];
       effect.life -= dt;
       const progress = 1 - Math.max(0, effect.life / effect.maxLife);
-      if (effect.kind === 'shockwave') {
+      if (effect.kind === 'shockwave' || effect.kind === 'spin') {
         const scale = THREE.MathUtils.lerp(0.25, effect.maxScale, 1 - (1 - progress) ** 3);
-        effect.mesh.scale.setScalar(scale);
+        effect.object.scale.setScalar(scale);
       }
-      effect.mesh.material.opacity = Math.max(0, 1 - progress) *
-        (effect.kind === 'shockwave' ? 0.82 : 0.34);
+      const fade = Math.max(0, 1 - progress) ** (effect.kind === 'fade' ? 1.8 : 1.2);
+      for (const entry of effect.materials)
+        entry.material.opacity = entry.opacity * fade;
       if (effect.life <= 0) {
-        this.scene.remove(effect.mesh);
-        effect.mesh.geometry.dispose();
-        effect.mesh.material.dispose();
+        this.scene.remove(effect.object);
+        disposeVisual(effect.object);
         this.meshEffects.splice(i, 1);
       }
     }

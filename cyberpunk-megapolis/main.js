@@ -9,12 +9,12 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { Player } from './player.js?v=9';
+import { Player } from './player.js?v=11';
 
 // build stamp: shown in the HUD + console so a stale-cache session is
 // recognizable at a glance (a mixed old/new module graph once reproduced the
 // "restart from the sky every few seconds" loop with zero errors)
-const BUILD = '2026-07-23v9-skills';
+const BUILD = '2026-07-23v11-weapon-vfx';
 console.log(`[build] ${BUILD}`);
 
 // ---------- coordinate convention (verified: case A — Blender FBX->glTF export_yup) ----------
@@ -1054,17 +1054,16 @@ function charMatFor(name) {
 
 
 // ---------- game layer (architecture adapted from the web-slinger reference) ----------
-import { buildCityBoxes } from './cityBoxes.js?v=9';
-import { Controller } from './controller.js?v=9';
-import { CameraRig } from './cameraRig.js?v=9';
-import { CombatSystem } from './combat.js?v=9';
-import { SkillSystem } from './skills.js?v=9';
+import { buildCityBoxes } from './cityBoxes.js?v=11';
+import { Controller } from './controller.js?v=11';
+import { CameraRig } from './cameraRig.js?v=11';
+import { CombatSystem } from './combat.js?v=11';
+import { SkillSystem } from './skills.js?v=11';
+import { GameAudio } from './audio.js?v=11';
 
-// input.js — keyboard + pointer-lock mouse state (from the web-slinger reference).
-// INLINED into main.js: a 404 on a static-imported module aborts the whole ES
-// module graph BEFORE any of our error handling can run (the "stuck at loader"
-// deploy bug). The source file input.js is kept in the repo for reference but
-// is never requested at runtime.
+// Keyboard + pointer-lock mouse state is intentionally inlined here. Keeping a
+// second, unused input.js caused deployment ambiguity and once allowed a missing
+// static dependency to abort the module graph before error handling could run.
 class Input {
   constructor(domElement) {
     this.keys = new Set();
@@ -1397,15 +1396,18 @@ const ctrl = new Controller(bw, groundAt, castRay, {
 });
 const rig = new CameraRig(camera, bw);
 const input = new Input(renderer.domElement);
+const audio = new GameAudio();
 const combat = new CombatSystem(scene, groundAt, {
   root: $('combatHud'),
   status: $('combatTarget'),
   hitMarker: $('hitMarker'),
   onMessage: (text, seconds) => showMsg(text, seconds),
+  audio,
 });
 const skills = new SkillSystem(combat, {
   root: $('combatHud'),
   onMessage: (text, seconds) => showMsg(text, seconds),
+  audio,
 });
 
 let chosen = null;
@@ -1437,6 +1439,9 @@ function onPointerLockFail(error) {
   return false;
 }
 function safeRequestPointerLock() {
+  // The same user gesture that requests Pointer Lock also unlocks Web Audio.
+  // Resume rejection is handled inside GameAudio and never blocks gameplay.
+  audio.unlock();
   // A rejected resume request must not leave physics frozen behind the pause
   // layer. Esc can still enter pause; clicking/Enter resumes play immediately
   // and pointer lock is then best-effort.
@@ -1593,6 +1598,7 @@ window.__ctrl = ctrl;
 window.__input = input;
 window.__combat = combat;
 window.__skills = skills;
+window.__audio = audio;
 window.__startGame = g => { selectGender(g); startGame(); };
 window.__tp = (x, y, z) => { window.__freeCam = true; window.__fcPos = new THREE.Vector3(x, y, z); };
 window.__lookAt = (x, y, z) => { window.__freeCam = true; window.__fcLook = [x, y, z]; };
@@ -1647,7 +1653,7 @@ function animate() {
       skills.afterPhysics(dt, chosen, ctrl);
     if (phase === 'play' && chosen &&
         (input.pressed('KeyF') || input.pressed('LMB'))) {
-      chosen.startAttack('basic');
+      if (chosen.startAttack('basic')) audio.playBladeSwing();
     }
     if (chosen) {
       chosen.update({

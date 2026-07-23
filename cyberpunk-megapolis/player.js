@@ -34,6 +34,8 @@ const TRAVERSAL_CLIPS = {
 };
 const STRIP_PELVIS_POS = new Set(['swing', 'fall', 'jumpLoop', 'landRoll']);
 const BLADE_UP = new THREE.Vector3(0, 1, 0);
+const TRAIL_INNER_COLOR = new THREE.Color(0x159bb2);
+const TRAIL_TIP_COLOR = new THREE.Color(0xd5ffff);
 const TRAIL_SAMPLES = 11;
 const ATTACK_PROFILES = {
   basic: { duration: 0.42, lockout: 0.48, impact: 0.40, damage: 40, emitImpact: true },
@@ -41,6 +43,17 @@ const ATTACK_PROFILES = {
   spin: { duration: 0.62, lockout: 0.66, impact: 0.34, damage: 45, emitImpact: false },
   wave: { duration: 0.42, lockout: 0.46, impact: 0.32, damage: 50, emitImpact: false },
 };
+
+function createBladeShape() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.045, 0.20);
+  shape.lineTo(-0.020, 1.46);
+  shape.quadraticCurveTo(0.015, 1.70, 0.125, 1.91);
+  shape.quadraticCurveTo(0.145, 1.68, 0.105, 1.49);
+  shape.lineTo(0.065, 0.20);
+  shape.closePath();
+  return shape;
+}
 
 export class Player {
   constructor(scene) {
@@ -98,62 +111,148 @@ export class Player {
     this.scene.add(this.bladeRoot);
 
     const hiltMat = new THREE.MeshStandardMaterial({
-      color: 0x172132, metalness: 0.92, roughness: 0.24,
-      emissive: 0x12334a, emissiveIntensity: 0.7,
+      color: 0x101725, metalness: 0.94, roughness: 0.22,
+      emissive: 0x092438, emissiveIntensity: 0.48,
+    });
+    const edgeMat = new THREE.MeshStandardMaterial({
+      color: 0x34455a, metalness: 0.98, roughness: 0.17,
+      emissive: 0x14364b, emissiveIntensity: 0.7,
     });
     const gripMat = new THREE.MeshStandardMaterial({
-      color: 0x05080e, metalness: 0.35, roughness: 0.72,
+      color: 0x03060b, metalness: 0.44, roughness: 0.64,
     });
-    const coreMat = new THREE.MeshBasicMaterial({
-      color: 0xd9ffff, toneMapped: false,
-    });
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: 0x28e9ff, transparent: true, opacity: 0.34,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-      toneMapped: false, side: THREE.DoubleSide,
+    const emitterMat = new THREE.MeshBasicMaterial({
+      color: 0x9cffff, toneMapped: false,
     });
 
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.32, 8), gripMat);
-    grip.position.y = 0.01;
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.055, 0.34, 10), gripMat);
+    grip.position.y = -0.015;
     this.bladeRoot.add(grip);
 
-    const pommel = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.06, 0.08, 8), hiltMat);
-    pommel.position.y = -0.17;
+    for (let i = 0; i < 6; i++) {
+      const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.054, 0.0065, 4, 10), edgeMat);
+      wrap.position.y = -0.155 + i * 0.055;
+      wrap.rotation.x = Math.PI / 2;
+      this.bladeRoot.add(wrap);
+    }
+
+    const pommel = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.052, 0.085, 8), edgeMat);
+    pommel.position.y = -0.235;
     this.bladeRoot.add(pommel);
 
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.065, 0.09), hiltMat);
-    guard.position.y = 0.18;
+    const pommelCap = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.058, 0.07, 8), hiltMat);
+    pommelCap.position.y = -0.315;
+    this.bladeRoot.add(pommelCap);
+
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.055, 0.07), hiltMat);
+    guard.position.y = 0.205;
     this.bladeRoot.add(guard);
 
-    this.bladeGlow = new THREE.Mesh(new THREE.CylinderGeometry(0.082, 0.046, 1.56, 10), glowMat);
-    this.bladeGlow.position.y = 0.98;
-    this.bladeRoot.add(this.bladeGlow);
+    for (const side of [-1, 1]) {
+      const prong = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.016, 0.034, 0.16, 6), edgeMat);
+      prong.position.set(side * 0.145, 0.245, 0);
+      prong.rotation.z = side * -1.02;
+      this.bladeRoot.add(prong);
 
-    this.bladeCore = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.014, 1.58, 8), coreMat);
-    this.bladeCore.position.y = 0.98;
+      const node = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), emitterMat);
+      node.position.set(side * 0.205, 0.288, 0);
+      this.bladeRoot.add(node);
+    }
+
+    const emitter = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.115, 10), edgeMat);
+    emitter.position.y = 0.285;
+    this.bladeRoot.add(emitter);
+
+    const emitterRing = new THREE.Mesh(new THREE.TorusGeometry(0.061, 0.01, 6, 16), emitterMat);
+    emitterRing.position.y = 0.35;
+    emitterRing.rotation.x = Math.PI / 2;
+    this.bladeRoot.add(emitterRing);
+    this.bladeEmitterMat = emitterMat;
+
+    const bladeShape = createBladeShape();
+    const coreGeometry = new THREE.ExtrudeGeometry(bladeShape, {
+      depth: 0.034,
+      bevelEnabled: true,
+      bevelSegments: 1,
+      bevelSize: 0.012,
+      bevelThickness: 0.012,
+    });
+    coreGeometry.translate(0, 0, -0.017);
+    this.bladeCore = new THREE.Mesh(coreGeometry, new THREE.MeshBasicMaterial({
+      color: 0xcaffff,
+      toneMapped: false,
+    }));
+    this.bladeCore.renderOrder = 8;
     this.bladeRoot.add(this.bladeCore);
 
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.047, 0.18, 8), coreMat);
-    tip.position.y = 1.86;
-    this.bladeRoot.add(tip);
+    const bladePlaneGeometry = new THREE.ShapeGeometry(bladeShape, 16);
+    this.bladeGlowLayers = [];
+    for (const [rotation, scale, opacity, color] of [
+      [0, 1.42, 0.34, 0x26eaff],
+      [Math.PI / 2, 1.15, 0.22, 0x56f6ff],
+      [0, 2.18, 0.11, 0x18c9ff],
+      [Math.PI / 2, 1.76, 0.08, 0x18c9ff],
+    ]) {
+      const material = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const layer = new THREE.Mesh(bladePlaneGeometry, material);
+      layer.rotation.y = rotation;
+      layer.scale.x = scale;
+      layer.userData.baseScale = scale;
+      layer.userData.baseOpacity = opacity;
+      layer.renderOrder = 7;
+      this.bladeRoot.add(layer);
+      this.bladeGlowLayers.push(layer);
+    }
 
-    this.bladeLight = new THREE.PointLight(0x39efff, 1.8, 5.5, 2);
-    this.bladeLight.position.y = 0.92;
+    this.bladeLight = new THREE.PointLight(0x31eaff, 2.0, 5.8, 2);
+    this.bladeLight.position.y = 1.02;
     this.bladeRoot.add(this.bladeLight);
 
     this.bladeTrailGeo = new THREE.BufferGeometry();
     this.bladeTrailPos = new Float32Array((TRAIL_SAMPLES - 1) * 6 * 3);
+    this.bladeTrailColors = new Float32Array((TRAIL_SAMPLES - 1) * 6 * 3);
     this.bladeTrailGeo.setAttribute(
       'position', new THREE.BufferAttribute(this.bladeTrailPos, 3).setUsage(THREE.DynamicDrawUsage));
+    this.bladeTrailGeo.setAttribute(
+      'color', new THREE.BufferAttribute(this.bladeTrailColors, 3).setUsage(THREE.DynamicDrawUsage));
     this.bladeTrailGeo.setDrawRange(0, 0);
     this.bladeTrail = new THREE.Mesh(this.bladeTrailGeo, new THREE.MeshBasicMaterial({
-      color: 0x37eaff, transparent: true, opacity: 0.30,
+      vertexColors: true, transparent: true, opacity: 0.32,
       blending: THREE.AdditiveBlending, depthWrite: false,
       side: THREE.DoubleSide, toneMapped: false,
     }));
     this.bladeTrail.frustumCulled = false;
     this.bladeTrail.visible = false;
     this.scene.add(this.bladeTrail);
+
+    this.bladeEdgeTrailGeo = new THREE.BufferGeometry();
+    this.bladeEdgeTrailPos = new Float32Array((TRAIL_SAMPLES - 1) * 2 * 3);
+    this.bladeEdgeTrailGeo.setAttribute(
+      'position',
+      new THREE.BufferAttribute(this.bladeEdgeTrailPos, 3).setUsage(THREE.DynamicDrawUsage));
+    this.bladeEdgeTrailGeo.setDrawRange(0, 0);
+    this.bladeEdgeTrail = new THREE.LineSegments(
+      this.bladeEdgeTrailGeo,
+      new THREE.LineBasicMaterial({
+        color: 0xd8ffff,
+        transparent: true,
+        opacity: 0.72,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }));
+    this.bladeEdgeTrail.frustumCulled = false;
+    this.bladeEdgeTrail.visible = false;
+    this.scene.add(this.bladeEdgeTrail);
   }
 
   async load(gender, matFactory, manager) {
@@ -207,6 +306,7 @@ export class Player {
     if (!enabled) {
       this.webGroup.visible = false;
       this.bladeTrail.visible = false;
+      this.bladeEdgeTrail.visible = false;
       this._trailSamples.length = 0;
     }
   }
@@ -339,26 +439,43 @@ export class Player {
         .addScaledVector(this._bladeForward, 0.22)
         .normalize();
     } else {
-      this._bladeDir.copy(BLADE_UP).multiplyScalar(-0.92)
-        .addScaledVector(this._bladeForward, 0.28)
-        .addScaledVector(this._bladeRight, 0.12)
+      this._bladeDir.copy(BLADE_UP).multiplyScalar(-0.46)
+        .addScaledVector(this._bladeForward, 0.64)
+        .addScaledVector(this._bladeRight, -0.50)
         .normalize();
     }
 
     this.bladeRoot.position.copy(this._bladeHand);
     this.bladeRoot.quaternion.copy(
       this._bladeQuat.setFromUnitVectors(BLADE_UP, this._bladeDir));
+    // During the peak of Q the follow camera briefly passes very close to the
+    // moving hand. Suppress the solid blade for that split second so it reads
+    // as a speed cut instead of filling the view with near-plane geometry.
+    const dashGhost = this.attackActive && this.attackKind === 'dash' &&
+      progress > 0.12 && progress < 0.82;
+    this.bladeRoot.visible = !dashGhost;
 
     const pulse = 1 + Math.sin(performance.now() * 0.018) * 0.045;
-    this.bladeGlow.scale.set(pulse, 1, pulse);
-    this.bladeLight.intensity = this.attackActive ? 3.1 : 1.8;
+    const attackBoost = this.attackActive ? 1.28 : 1;
+    for (const layer of this.bladeGlowLayers) {
+      layer.scale.x = layer.userData.baseScale * pulse;
+      layer.material.opacity = layer.userData.baseOpacity * attackBoost *
+        (0.94 + Math.sin(performance.now() * 0.024) * 0.06);
+    }
+    this.bladeEmitterMat.color.setHex(this.attackActive ? 0xeaffff : 0x9cffff);
+    this.bladeLight.intensity = this.attackActive ? 3.35 : 2.0;
 
     this._bladeBase.copy(this._bladeHand).addScaledVector(this._bladeDir, 0.22);
     this._bladeTip.copy(this._bladeHand).addScaledVector(this._bladeDir, 1.90);
 
-    if (this.attackActive && progress >= 0.08 && progress <= 0.96) {
+    // Q translates the whole character several metres in a fraction of a
+    // second. Connecting those world-space blade samples would create a giant
+    // opaque sheet, so the dash uses its own controlled speed-line effect.
+    if (this.attackActive && this.attackKind === 'dash') {
+      this._trailSamples.length = 0;
+    } else if (this.attackActive && progress >= 0.08 && progress <= 0.96) {
       this._trailSamples.unshift({
-        base: this._bladeBase.clone(),
+        inner: this._bladeBase.clone().lerp(this._bladeTip, 0.60),
         tip: this._bladeTip.clone(),
         life: this.attackKind === 'spin' ? 0.24 : 0.16,
       });
@@ -389,18 +506,35 @@ export class Player {
   updateBladeTrail() {
     const samples = this._trailSamples;
     let cursor = 0;
+    let edgeCursor = 0;
     for (let i = 0; i + 1 < samples.length; i++) {
       const a = samples[i], b = samples[i + 1];
-      const vertices = [a.base, a.tip, b.tip, a.base, b.tip, b.base];
-      for (const v of vertices) {
+      const vertices = [
+        [a.inner, TRAIL_INNER_COLOR], [a.tip, TRAIL_TIP_COLOR], [b.tip, TRAIL_TIP_COLOR],
+        [a.inner, TRAIL_INNER_COLOR], [b.tip, TRAIL_TIP_COLOR], [b.inner, TRAIL_INNER_COLOR],
+      ];
+      for (const [v, color] of vertices) {
         this.bladeTrailPos[cursor++] = v.x;
         this.bladeTrailPos[cursor++] = v.y;
         this.bladeTrailPos[cursor++] = v.z;
+        const colorCursor = cursor - 3;
+        this.bladeTrailColors[colorCursor] = color.r;
+        this.bladeTrailColors[colorCursor + 1] = color.g;
+        this.bladeTrailColors[colorCursor + 2] = color.b;
+      }
+      for (const v of [a.tip, b.tip]) {
+        this.bladeEdgeTrailPos[edgeCursor++] = v.x;
+        this.bladeEdgeTrailPos[edgeCursor++] = v.y;
+        this.bladeEdgeTrailPos[edgeCursor++] = v.z;
       }
     }
     this.bladeTrailGeo.setDrawRange(0, cursor / 3);
     this.bladeTrailGeo.attributes.position.needsUpdate = true;
+    this.bladeTrailGeo.attributes.color.needsUpdate = true;
     this.bladeTrail.visible = cursor > 0;
+    this.bladeEdgeTrailGeo.setDrawRange(0, edgeCursor / 3);
+    this.bladeEdgeTrailGeo.attributes.position.needsUpdate = true;
+    this.bladeEdgeTrail.visible = edgeCursor > 0;
   }
 
   updateWeb(ctx) {

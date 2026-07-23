@@ -140,6 +140,7 @@ export class SkillSystem {
           label: '空中坠击',
           color: 0x8a7dff,
         });
+        this.ui.audio?.playSlamImpact();
         this.slam = null;
         player.setBladePose(null);
       } else if (this.slam.elapsed > 12) {
@@ -168,6 +169,7 @@ export class SkillSystem {
       this.cancelWebMovement(ctrl);
       this.slam = { elapsed: 0, direction: direction.clone(), damage: skill.damage };
       player.setBladePose('slam');
+      this.ui.audio?.playSlamStart();
       this.startCooldown(skill);
       this.ui.onMessage?.('空中坠击', 0.9);
       return true;
@@ -189,6 +191,7 @@ export class SkillSystem {
         startedOnGround: ctrl.mode === 'ground',
         damage: skill.damage,
       };
+      this.ui.audio?.playDash();
       this.ui.onMessage?.('瞬步斩 · 60 DMG', 0.9);
     } else if (skill.id === 'spin') {
       this.spin = {
@@ -197,6 +200,7 @@ export class SkillSystem {
         direction: direction.clone(),
         damage: skill.damage,
       };
+      this.ui.audio?.playSpin();
       this.ui.onMessage?.('回旋斩 · 范围攻击', 0.9);
     } else {
       this.wave = {
@@ -205,6 +209,7 @@ export class SkillSystem {
         direction: direction.clone(),
         damage: skill.damage,
       };
+      this.ui.audio?.playWaveCast();
       this.ui.onMessage?.('能量波 · 50 DMG', 0.9);
     }
     this.startCooldown(skill);
