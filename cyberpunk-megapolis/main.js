@@ -9,12 +9,12 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { Player } from './player.js?v=6';
+import { Player } from './player.js?v=9';
 
 // build stamp: shown in the HUD + console so a stale-cache session is
 // recognizable at a glance (a mixed old/new module graph once reproduced the
 // "restart from the sky every few seconds" loop with zero errors)
-const BUILD = '2026-07-23v6';
+const BUILD = '2026-07-23v9-skills';
 console.log(`[build] ${BUILD}`);
 
 // ---------- coordinate convention (verified: case A — Blender FBX->glTF export_yup) ----------
@@ -1054,9 +1054,11 @@ function charMatFor(name) {
 
 
 // ---------- game layer (architecture adapted from the web-slinger reference) ----------
-import { buildCityBoxes } from './cityBoxes.js?v=6';
-import { Controller } from './controller.js?v=6';
-import { CameraRig } from './cameraRig.js?v=6';
+import { buildCityBoxes } from './cityBoxes.js?v=9';
+import { Controller } from './controller.js?v=9';
+import { CameraRig } from './cameraRig.js?v=9';
+import { CombatSystem } from './combat.js?v=9';
+import { SkillSystem } from './skills.js?v=9';
 
 // input.js — keyboard + pointer-lock mouse state (from the web-slinger reference).
 // INLINED into main.js: a 404 on a static-imported module aborts the whole ES
@@ -1077,7 +1079,8 @@ class Input {
       if (e.repeat) return;            // OS auto-repeat would spam jumps/webs
       this.keys.add(e.code);
       this.justPressed.add(e.code);
-      if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) e.preventDefault();
+      if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyC', 'KeyX', 'KeyV']
+        .includes(e.code)) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
@@ -1090,7 +1093,9 @@ class Input {
     });
     domElement.addEventListener('mousedown', (e) => {
       if (e.button === 2) { this.rmb = true; this.justPressed.add('RMB'); }
-      if (e.button === 0) this.justPressed.add('LMB');
+      // An unlocked left click is reserved for retrying Pointer Lock. Once
+      // locked, the same button becomes the blade attack input.
+      if (e.button === 0 && this.locked) this.justPressed.add('LMB');
     });
     domElement.addEventListener('mouseup', (e) => { if (e.button === 2) this.rmb = false; });
     domElement.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1392,6 +1397,16 @@ const ctrl = new Controller(bw, groundAt, castRay, {
 });
 const rig = new CameraRig(camera, bw);
 const input = new Input(renderer.domElement);
+const combat = new CombatSystem(scene, groundAt, {
+  root: $('combatHud'),
+  status: $('combatTarget'),
+  hitMarker: $('hitMarker'),
+  onMessage: (text, seconds) => showMsg(text, seconds),
+});
+const skills = new SkillSystem(combat, {
+  root: $('combatHud'),
+  onMessage: (text, seconds) => showMsg(text, seconds),
+});
 
 let chosen = null;
 let selGender = null;
@@ -1499,14 +1514,20 @@ function startGame() {
   }
   enterBtn.disabled = true;
   chosen = players[selGender];
+  chosen.setEnabled(true);
   const other = players[selGender === 'man' ? 'girl' : 'man'];
-  if (other) scene.remove(other.group);
+  if (other) {
+    other.setEnabled(false);
+    scene.remove(other.group);
+  }
   window.__player = chosen;
   doDive(false);
   rig.blendFrom(camera, 1.5);   // carry the aerial menu shot straight into the plunge
   menuEl.classList.add('gone');
   $('stats').classList.add('on');
   phase = 'play';   // game logic must not depend on pointer lock (headless can't lock)
+  combat.activate();
+  skills.activate();
   safeRequestPointerLock();
   autoShowHelp();
 }
@@ -1522,6 +1543,7 @@ function doDive(isReset, cause = isReset ? 'manual-R' : 'start') {
   const v = new THREE.Vector3(-10, -6, 0.7);
   input.yaw = Math.PI / 2;      // camera faces down the street (−x)
   input.pitch = -0.12;
+  skills.resetTransient(chosen);
   ctrl.diveFrom(p, v);
   rig.initialized = false;
   if (isReset) {
@@ -1569,6 +1591,8 @@ window.__scene = scene;
 window.__camera = camera;
 window.__ctrl = ctrl;
 window.__input = input;
+window.__combat = combat;
+window.__skills = skills;
 window.__startGame = g => { selectGender(g); startGame(); };
 window.__tp = (x, y, z) => { window.__freeCam = true; window.__fcPos = new THREE.Vector3(x, y, z); };
 window.__lookAt = (x, y, z) => { window.__freeCam = true; window.__fcLook = [x, y, z]; };
@@ -1613,10 +1637,18 @@ function animate() {
     camera.position.set(cx + Math.sin(menuT) * 26, 398 + Math.sin(menuT * 0.6) * 7,
                         cz + Math.cos(menuT) * 26);
     camera.lookAt(cx - 130, 322, cz + 8);               // down the street, horizon high in frame
-    for (const g in players) players[g].mixer?.update(dt);
+    for (const g in players) players[g].updateMenu(dt);
   } else {
     rig.forward(camDir, input);
+    if (phase === 'play' && chosen)
+      skills.beforePhysics(dt, input, chosen, ctrl, camDir);
     if (phase === 'play') ctrl.update(dt, input, input.yaw, camDir);
+    if (phase === 'play' && chosen)
+      skills.afterPhysics(dt, chosen, ctrl);
+    if (phase === 'play' && chosen &&
+        (input.pressed('KeyF') || input.pressed('LMB'))) {
+      chosen.startAttack('basic');
+    }
     if (chosen) {
       chosen.update({
         dt,
@@ -1630,7 +1662,16 @@ function animate() {
           ? Math.max(0, (ctrl.ropeLen - ctrl.pos.distanceTo(ctrl.anchor)) / Math.max(ctrl.ropeLen, 1))
           : 0,
       });
+      if (phase === 'play') {
+        const impact = chosen.consumeAttackImpact();
+        if (impact) combat.strike(impact);
+      }
     }
+    combat.update(phase === 'play' ? dt : 0, {
+      position: ctrl.pos,
+      mode: ctrl.mode,
+      yaw: chosen?.yaw ?? input.yaw,
+    }, camera);
     rig.update(dt, input, ctrl);
     if (window.__freeCam && window.__fcPos) {   // debug screenshots: let __tp/__lookAt own the camera
       camera.position.copy(window.__fcPos);

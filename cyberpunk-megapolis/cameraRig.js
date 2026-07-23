@@ -2,7 +2,7 @@
 // orbit, speed-reactive FOV/distance, velocity look-ahead, swing auto-yaw + banking,
 // AABB occlusion pull-in.
 import * as THREE from 'three';
-import { segmentAABB } from './cityBoxes.js?v=6';
+import { segmentAABB } from './cityBoxes.js?v=9';
 
 const _look = new THREE.Vector3();
 const _dir = new THREE.Vector3();

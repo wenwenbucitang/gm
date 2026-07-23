@@ -119,6 +119,46 @@
   .panel .v small { font-size: 10px; color: var(--dim); margin-left: 4px; }
   .panel .k { font-size: 9px; letter-spacing: .24em; color: var(--dim);
     text-transform: uppercase; margin-top: 2px; }
+  #combatHud { position: fixed; right: 20px; bottom: 20px; z-index: 10;
+    width: 310px; max-width: calc(100vw - 40px); padding: 11px 14px;
+    background: rgba(8,10,22,0.44); border: 1px solid rgba(85,255,255,0.2);
+    border-radius: 8px; backdrop-filter: blur(3px);
+    opacity: 0; transform: translateY(8px); transition: opacity .35s, transform .35s;
+    pointer-events: none; }
+  #combatHud.on { opacity: 1; transform: none; }
+  #combatHud .c-weapon { color: var(--cyan); font-size: 11px; letter-spacing: .26em;
+    text-transform: uppercase; text-shadow: 0 0 10px #0ff8; }
+  #combatHud .c-input { margin-top: 5px; color: var(--dim); font-size: 9px;
+    letter-spacing: .12em; text-transform: uppercase; }
+  #combatTarget { margin-top: 8px; color: var(--ink); font-size: 10px;
+    letter-spacing: .08em; }
+  .skill-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px; margin-top: 10px; }
+  .skill { position: relative; min-height: 36px; overflow: hidden;
+    border: 1px solid rgba(112,139,190,.24); border-radius: 4px;
+    background: rgba(5,8,18,.72); }
+  .skill-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0;
+    background: linear-gradient(0deg, rgba(255,66,139,.36), rgba(76,32,108,.18));
+    transition: height .08s linear; }
+  .skill-body { position: relative; z-index: 1; display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 38px; align-items: center;
+    height: 36px; padding: 0 7px; }
+  .skill-key { color: var(--cyan); font-size: 13px; font-weight: 700;
+    text-shadow: 0 0 8px #0ff8; }
+  .skill-name { color: #cbd2e2; font-size: 9px; letter-spacing: .08em; }
+  .skill-cd { color: #ff7aaa; font-size: 8px; letter-spacing: .05em; text-align: right; }
+  .skill.ready { border-color: rgba(85,255,255,.32); }
+  .skill.ready .skill-cd { color: #6fffd6; }
+  #hitMarker { position: fixed; left: 50%; top: 50%; z-index: 12;
+    color: #fff; font-size: 28px; font-weight: 300; line-height: 1;
+    transform: translate(-50%, -50%) scale(1.6); opacity: 0;
+    text-shadow: 0 0 7px #5ff, 0 0 16px #5ff;
+    pointer-events: none; }
+  #hitMarker.show { animation: hitPulse .16s ease-out; }
+  @keyframes hitPulse {
+    0% { opacity: 1; transform: translate(-50%, -50%) scale(1.6); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(.75); }
+  }
   #fps { position: fixed; top: 10px; left: 12px; z-index: 10; font-size: 11px;
     color: #9bd; text-shadow: 0 1px 2px #000; pointer-events: none; }
   #msg { position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 11;
@@ -219,6 +259,30 @@
   <div class="panel"><div class="v"><span id="stHeight">0</span><small>m</small></div><div class="k">高度</div></div>
   <div class="panel"><div class="v" id="stState">—</div><div class="k">状态</div></div>
 </div>
+<div id="combatHud">
+  <div class="c-weapon">E-EDGE // ONLINE</div>
+  <div class="c-input">F / 鼠标左键 · 能量刃攻击 · 40 DMG</div>
+  <div class="skill-grid" aria-label="能量刀技能">
+    <div class="skill" data-skill="dash">
+      <div class="skill-fill"></div>
+      <div class="skill-body"><span class="skill-key">Q</span><span class="skill-name">瞬步斩</span><span class="skill-cd">READY</span></div>
+    </div>
+    <div class="skill" data-skill="spin">
+      <div class="skill-fill"></div>
+      <div class="skill-body"><span class="skill-key">C</span><span class="skill-name">回旋斩</span><span class="skill-cd">READY</span></div>
+    </div>
+    <div class="skill" data-skill="slam">
+      <div class="skill-fill"></div>
+      <div class="skill-body"><span class="skill-key">X</span><span class="skill-name">空中坠击</span><span class="skill-cd">READY</span></div>
+    </div>
+    <div class="skill" data-skill="wave">
+      <div class="skill-fill"></div>
+      <div class="skill-body"><span class="skill-key">V</span><span class="skill-name">能量波</span><span class="skill-cd">READY</span></div>
+    </div>
+  </div>
+  <div id="combatTarget">等待进入战斗训练</div>
+</div>
+<div id="hitMarker">×</div>
 <div id="fps"></div>
 <div id="msg"></div>
 <div id="fade"></div>
@@ -234,6 +298,11 @@
       <tr><td class="k">A / D（摆荡）</td><td>左右转向</td></tr>
       <tr><td class="k">S（空中）</td><td>俯冲</td></tr>
       <tr><td class="k">E / 鼠标右键</td><td>飞掠至瞄准的屋顶边缘</td></tr>
+      <tr><td class="k">F / 鼠标左键</td><td>挥砍能量刀 · 对训练目标造成伤害</td></tr>
+      <tr><td class="k">Q</td><td>瞬步斩 · 向瞄准方向高速斩击 · 60 伤害</td></tr>
+      <tr><td class="k">C</td><td>回旋斩 · 近身范围攻击 · 45 伤害</td></tr>
+      <tr><td class="k">X（空中）</td><td>空中坠击 · 落地冲击波 · 70 伤害</td></tr>
+      <tr><td class="k">V</td><td>能量波 · 远程轨迹攻击 · 50 伤害</td></tr>
       <tr><td class="k">R</td><td>从高空重新跃入</td></tr>
       <tr><td class="k">T</td><td>切换 夜 / 昼 / 黄昏</td></tr>
       <tr><td class="k">H</td><td>显示 / 隐藏本操作表</td></tr>
@@ -255,7 +324,7 @@
   // fails (404, CDN cache mix-up, truncated deploy), the rejection lands here
   // where we can still show the project's own error layer — a static
   // <script type="module" src> would die silently on the loader at 0%.
-  import('./main.js?v=6').catch(error => {
+  import('./main.js?v=9').catch(error => {
     console.error('[boot] module graph failed:', error);
     const raw = (error && (error.message || String(error))) || 'unknown error';
     const lm = document.getElementById('loadMsg');
